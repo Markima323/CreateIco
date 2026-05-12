@@ -35,9 +35,13 @@ except ImportError:
     TkinterDnD = None
     DND_AVAILABLE = False
 
-
-BASE_DIR = Path(__file__).resolve().parent
-OUTPUT_ROOT = BASE_DIR / "output"
+SCRIPT_DIR = Path(__file__).resolve().parent
+APP_DIR = (
+    Path(sys.executable).resolve().parent
+    if getattr(sys, "frozen", False)
+    else SCRIPT_DIR
+)
+OUTPUT_ROOT = APP_DIR / "output"
 ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
 SUPPORTED_SUFFIXES = {
     ".png",
@@ -589,7 +593,7 @@ def create_root() -> tk.Tk:
 
 
 def show_fatal_error(exc: BaseException) -> None:
-    error_log = BASE_DIR / "error.log"
+    error_log = APP_DIR / "error.log"
     error_log.write_text(traceback.format_exc(), encoding="utf-8")
 
     fallback_root = tk.Tk()
