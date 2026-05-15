@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 import sys
 import threading
 import traceback
@@ -238,21 +239,21 @@ class IconMakerApp:
         )
         self.select_button.pack(side="left")
 
-        self.remove_button = self._build_button(
-            controls,
-            "\u79fb\u9664\u9009\u4e2d",
-            self.remove_selected,
-            BROWN,
-        )
-        self.remove_button.pack(side="left", padx=10)
-
         self.clear_button = self._build_button(
             controls,
             "\u6e05\u7a7a\u5217\u8868",
             self.clear_files,
             BROWN,
         )
-        self.clear_button.pack(side="left")
+        self.clear_button.pack(side="left", padx=10)
+
+        self.open_output_button = self._build_button(
+            controls,
+            "\u6253\u5f00\u8f93\u51fa\u6587\u4ef6\u5939",
+            self.open_output_folder,
+            BROWN,
+        )
+        self.open_output_button.pack(side="left")
 
         self.run_button = self._build_button(
             self.action_bar,
@@ -443,18 +444,6 @@ class IconMakerApp:
 
         self._refresh_ui_state(rejected)
 
-    def remove_selected(self) -> None:
-        indices = list(self.file_listbox.curselection())
-        if not indices:
-            return
-
-        selected = set(indices)
-        self.selected_files = [
-            path for index, path in enumerate(self.selected_files) if index not in selected
-        ]
-        self._refresh_listbox()
-        self._refresh_ui_state()
-
     def clear_files(self) -> None:
         if not self.selected_files:
             return
@@ -462,6 +451,26 @@ class IconMakerApp:
         self.selected_files.clear()
         self._refresh_listbox()
         self._refresh_ui_state()
+
+    def open_output_folder(self) -> None:
+        OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+
+        try:
+            if hasattr(os, "startfile"):
+                os.startfile(OUTPUT_ROOT)
+            else:
+                messagebox.showinfo(
+                    "\u6253\u5f00\u8f93\u51fa\u6587\u4ef6\u5939",
+                    f"\u8f93\u51fa\u6587\u4ef6\u5939\u4f4d\u7f6e\uff1a\n{OUTPUT_ROOT}",
+                )
+        except OSError as exc:
+            messagebox.showerror(
+                "\u6253\u5f00\u5931\u8d25",
+                (
+                    "\u65e0\u6cd5\u6253\u5f00\u8f93\u51fa\u6587\u4ef6\u5939\uff1a\n"
+                    f"{OUTPUT_ROOT}\n\n{exc}"
+                ),
+            )
 
     def _refresh_listbox(self) -> None:
         self.file_listbox.delete(0, tk.END)
@@ -510,8 +519,8 @@ class IconMakerApp:
 
         controls_state = "disabled" if self.processing else "normal"
         self.select_button.config(state=controls_state)
-        self.remove_button.config(state=controls_state)
         self.clear_button.config(state=controls_state)
+        self.open_output_button.config(state=controls_state)
         self.drop_label.config(text=self._drop_text())
 
     def start_processing(self) -> None:
