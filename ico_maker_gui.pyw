@@ -44,6 +44,8 @@ APP_DIR = (
 )
 OUTPUT_ROOT = APP_DIR / "output"
 ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
+OUTPUT_FORMATS = ("ico", "png")
+OUTPUT_FORMAT_SAVE_NAMES = {"ico": "ICO", "png": "PNG"}
 SUPPORTED_SUFFIXES = {
     ".png",
     ".jpg",
@@ -72,7 +74,8 @@ TITLE_TEXT = "ICO \u5236\u4f5c\u5de5\u5177"
 SUBTITLE_TEXT = (
     "\u9009\u62e9\u56fe\u7247\u6216\u76f4\u63a5\u62d6\u5165\u9762\u677f\uff0c"
     "\u70b9\u51fb\u201c\u5f00\u59cb\u5236\u4f5c\u201d\u540e\u81ea\u52a8\u88c1\u526a"
-    "\u4e3a\u6b63\u65b9\u5f62\u5e76\u751f\u6210\u591a\u5c3a\u5bf8 ICO\u3002"
+    "\u4e3a\u6b63\u65b9\u5f62\u5e76\u6309\u6240\u9009\u683c\u5f0f\u751f\u6210"
+    "\u591a\u5c3a\u5bf8\u56fe\u7247\u3002"
 )
 DROP_TEXT_READY = (
     "\u5c06\u56fe\u7247\u62d6\u5230\u8fd9\u91cc\n"
@@ -87,6 +90,7 @@ SIZE_TEXT = (
     "\u8f93\u51fa\u5c3a\u5bf8\uff1a16x16\uff0c24x24\uff0c32x32\uff0c48x48\uff0c"
     "64x64\uff0c128x128\uff0c256x256"
 )
+FORMAT_TEXT_TEMPLATE = "\u8f93\u51fa\u683c\u5f0f\uff1a{}"
 
 
 def enable_windows_dpi_awareness() -> None:
@@ -130,15 +134,35 @@ def crop_to_square(image: Image.Image) -> Image.Image:
     return image.crop((left, top, left + edge, top + edge))
 
 
-def build_output_folder_name(source: Path, existing_names: dict[str, int]) -> str:
-    base_name = source.stem
+def build_output_folder_name(
+    source: Path, output_format: str, existing_names: dict[str, int]
+) -> str:
+    base_name = f"{source.stem}-{output_format}"
     count = existing_names.get(base_name, 0) + 1
     existing_names[base_name] = count
     return base_name if count == 1 else f"{base_name}_{count}"
 
 
-def convert_image_to_ico_set(source_path: Path, output_dir: Path) -> None:
+def get_output_format_label(output_format: str) -> str:
+    return OUTPUT_FORMAT_SAVE_NAMES.get(output_format, output_format.upper())
+
+
+def remove_generated_outputs(output_dir: Path) -> None:
+    if not output_dir.exists():
+        return
+
+    for size in ICO_SIZES:
+        for suffix in OUTPUT_FORMATS:
+            candidate = output_dir / f"{size}x{size}.{suffix}"
+            if candidate.exists():
+                candidate.unlink()
+
+
+def convert_image_to_output_set(
+    source_path: Path, output_dir: Path, output_format: str
+) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
+    remove_generated_outputs(output_dir)
 
     with Image.open(source_path) as image:
         prepared = ImageOps.exif_transpose(image).convert("RGBA")
@@ -146,7 +170,10 @@ def convert_image_to_ico_set(source_path: Path, output_dir: Path) -> None:
 
         for size in ICO_SIZES:
             icon = square.resize((size, size), RESAMPLE)
-            icon.save(output_dir / f"{size}x{size}.ico", format="ICO")
+            icon.save(
+                output_dir / f"{size}x{size}.{output_format}",
+                format=OUTPUT_FORMAT_SAVE_NAMES[output_format],
+            )
 
 
 def is_supported_image(path: Path) -> bool:
@@ -158,6 +185,7 @@ class IconMakerApp:
         self.root = root
         self.selected_files: list[Path] = []
         self.processing = False
+        self.output_format_var = tk.StringVar(master=self.root, value="ico")
 
         self.root.title(TITLE_TEXT)
         self.root.geometry("920x760")
@@ -254,6 +282,32 @@ class IconMakerApp:
             BROWN,
         )
         self.open_output_button.pack(side="left")
+
+        self.format_frame = tk.Frame(controls, bg=WINDOW_BG)
+        self.format_frame.pack(side="left", padx=(16, 0))
+
+        self.format_label = tk.Label(
+            self.format_frame,
+            text="\u8f93\u51fa\u683c\u5f0f\uff1a",
+            font=("Microsoft YaHei UI", 10),
+            bg=WINDOW_BG,
+            fg=TEXT_DARK,
+        )
+        self.format_label.pack(side="left", padx=(0, 6))
+
+        self.ico_format_button = self._build_format_radiobutton(
+            self.format_frame,
+            "ICO",
+            "ico",
+        )
+        self.ico_format_button.pack(side="left")
+
+        self.png_format_button = self._build_format_radiobutton(
+            self.format_frame,
+            "PNG",
+            "png",
+        )
+        self.png_format_button.pack(side="left", padx=(8, 0))
 
         self.run_button = self._build_button(
             self.action_bar,
@@ -353,10 +407,39 @@ class IconMakerApp:
             cursor="hand2",
         )
 
+    def _build_format_radiobutton(
+        self,
+        parent: tk.Widget,
+        text: str,
+        value: str,
+    ) -> tk.Radiobutton:
+        return tk.Radiobutton(
+            parent,
+            text=text,
+            value=value,
+            variable=self.output_format_var,
+            command=self._on_output_format_changed,
+            font=("Microsoft YaHei UI", 10),
+            bg=WINDOW_BG,
+            fg=TEXT_DARK,
+            activebackground=WINDOW_BG,
+            activeforeground=TEXT_DARK,
+            selectcolor=CARD_BG,
+            padx=4,
+            pady=0,
+            bd=0,
+            highlightthickness=0,
+            cursor="hand2",
+        )
+
     def _drop_text(self) -> str:
         if DND_AVAILABLE:
             return DROP_TEXT_READY
         return DROP_TEXT_NO_DND
+
+    def _on_output_format_changed(self) -> None:
+        self._update_info_label()
+        self._refresh_ui_state()
 
     def _register_drop_targets(self) -> None:
         if not DND_AVAILABLE:
@@ -392,6 +475,12 @@ class IconMakerApp:
         self.subtitle_label.configure(wraplength=width)
         self.info_label.configure(wraplength=width)
         self.status_label.configure(wraplength=width)
+
+    def _update_info_label(self) -> None:
+        format_label = get_output_format_label(self.output_format_var.get())
+        self.info_label.configure(
+            text=f"{SIZE_TEXT}\n{FORMAT_TEXT_TEMPLATE.format(format_label)}"
+        )
 
     def select_files(self) -> None:
         file_paths = filedialog.askopenfilenames(
@@ -478,6 +567,8 @@ class IconMakerApp:
             self.file_listbox.insert(tk.END, str(path))
 
     def _refresh_ui_state(self, rejected: list[str] | None = None) -> None:
+        self._update_info_label()
+
         if not PIL_AVAILABLE:
             message = (
                 "Pillow \u4f9d\u8d56\u4e0d\u53ef\u7528\uff0c"
@@ -489,7 +580,10 @@ class IconMakerApp:
             self.run_button.config(state="disabled")
         elif self.processing:
             self.status_label.config(
-                text="\u6b63\u5728\u5904\u7406\u56fe\u7247\uff0c\u8bf7\u7a0d\u5019..."
+                text=(
+                    "\u6b63\u5728\u5904\u7406\u56fe\u7247\uff0c\u8bf7\u7a0d\u5019..."
+                    f"\n{FORMAT_TEXT_TEMPLATE.format(get_output_format_label(self.output_format_var.get()))}"
+                )
             )
             self.run_button.config(state="disabled", text="\u5236\u4f5c\u4e2d...")
         else:
@@ -497,6 +591,11 @@ class IconMakerApp:
             if self.selected_files:
                 status_parts.append(
                     f"\u5df2\u9009\u62e9 {len(self.selected_files)} \u4e2a\u6587\u4ef6\u3002"
+                )
+                status_parts.append(
+                    FORMAT_TEXT_TEMPLATE.format(
+                        get_output_format_label(self.output_format_var.get())
+                    )
                 )
                 status_parts.append(f"\u8f93\u51fa\u4f4d\u7f6e\uff1a{OUTPUT_ROOT}")
             else:
@@ -521,6 +620,8 @@ class IconMakerApp:
         self.select_button.config(state=controls_state)
         self.clear_button.config(state=controls_state)
         self.open_output_button.config(state=controls_state)
+        self.ico_format_button.config(state=controls_state)
+        self.png_format_button.config(state=controls_state)
         self.drop_label.config(text=self._drop_text())
 
     def start_processing(self) -> None:
@@ -542,32 +643,43 @@ class IconMakerApp:
 
         self.processing = True
         self._refresh_ui_state()
+        output_format = self.output_format_var.get()
 
         worker = threading.Thread(
             target=self._process_files_worker,
-            args=(list(self.selected_files),),
+            args=(list(self.selected_files), output_format),
             daemon=True,
         )
         worker.start()
 
-    def _process_files_worker(self, file_paths: list[Path]) -> None:
+    def _process_files_worker(
+        self, file_paths: list[Path], output_format: str
+    ) -> None:
         created_dirs: list[Path] = []
         failures: list[tuple[Path, str]] = []
         name_counter: dict[str, int] = {}
 
         for source_path in file_paths:
             try:
-                folder_name = build_output_folder_name(source_path, name_counter)
+                folder_name = build_output_folder_name(
+                    source_path, output_format, name_counter
+                )
                 output_dir = OUTPUT_ROOT / folder_name
-                convert_image_to_ico_set(source_path, output_dir)
+                convert_image_to_output_set(source_path, output_dir, output_format)
                 created_dirs.append(output_dir)
             except Exception as exc:
                 failures.append((source_path, str(exc)))
 
-        self.root.after(0, lambda: self._finish_processing(created_dirs, failures))
+        self.root.after(
+            0,
+            lambda: self._finish_processing(created_dirs, failures, output_format),
+        )
 
     def _finish_processing(
-        self, created_dirs: list[Path], failures: list[tuple[Path, str]]
+        self,
+        created_dirs: list[Path],
+        failures: list[tuple[Path, str]],
+        output_format: str,
     ) -> None:
         self.processing = False
         self._refresh_ui_state()
@@ -577,7 +689,7 @@ class IconMakerApp:
             shown_dirs = "\n".join(str(path) for path in created_dirs[:6])
             messages.append(
                 f"\u5df2\u751f\u6210 {len(created_dirs)} "
-                f"\u4e2a\u8f93\u51fa\u6587\u4ef6\u5939\uff1a\n{shown_dirs}"
+                f"\u4e2a\u8f93\u51fa\u6587\u4ef6\u5939\uff08{get_output_format_label(output_format)}\uff09\uff1a\n{shown_dirs}"
             )
         if failures:
             shown_failures = "\n".join(
